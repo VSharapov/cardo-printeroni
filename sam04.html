@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        .thumbnail {
+            cursor: pointer;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        th, td {
+            padding: 10px;
+            text-align: center;
+        }
+        svg {
+            border: 1px solid black;
+        }
+    </style>
+</head>
+<body>
+    <h2>Select Images</h2>
+    <input type="file" id="imageInput" multiple>
+    <br><br>
+    <label for="slider">Thumbnail Size:</label>
+    <input type="range" id="slider" min="50" max="500" value="100">
+    <div id="thumbnails"></div>
+
+    <table id="imageTable">
+        <tr>
+            <th>Front</th>
+            <th>Back</th>
+            <th>Duplicate</th>
+            <th>Remove</th>
+        </tr>
+    </table>
+
+    <h3>All units are mm</h3>
+    <form id="svgSettings">
+        <label>Page Width: <input type="number" id="pageWidth" value="215.9"></label><br>
+        <label>Page Height: <input type="number" id="pageHeight" value="279.4"></label><br>
+        <label>Margin Top: <input type="number" id="marginTop" value="3"></label><br>
+        <label>Margin Right: <input type="number" id="marginRight" value="3"></label><br>
+        <label>Margin Bottom: <input type="number" id="marginBottom" value="3"></label><br>
+        <label>Margin Left: <input type="number" id="marginLeft" value="3"></label><br>
+        <label>Image Height: <input type="number" id="imageHeight" value="50.8"></label><br>
+        <label>Image Width: <input type="number" id="imageWidth" value="50.8"></label><br>
+        <label>Spacing: <input type="number" id="spacing" value="2"></label><br>
+    </form>
+    <br />
+
+    <svg id="svg1" width="215.9mm" height="279.4mm"></svg>
+    <svg id="svg2" width="215.9mm" height="279.4mm"></svg>
+    <br />
+    
+    <button id="downloadFront">Download Front</button>
+    <br />
+    <button id="downloadBack">Download Back</button>
+    <br />
+
+    <script>
+        var images = [];
+        var pairs = [];
+
+        document.getElementById('imageInput').addEventListener('change', function(e) {
+            var files = e.target.files;
+            for (var i = 0; i < files.length; i++) {
+                let file = files[i];
+                let reader = new FileReader();
+                reader.onload = function(e) {
+                    images.push({ id: images.length, filename: file.name, blob: e.target.result });
+                    displayThumbnails();
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        document.getElementById('slider').addEventListener('input', function(e) {
+            var size = e.target.value;
+            var thumbnails = document.querySelectorAll('.thumbnail');
+            thumbnails.forEach(function(thumbnail) {
+                thumbnail.style.width = size + 'px';
+                thumbnail.style.height = size + 'px';
+            });
+        });
+
+        function displayThumbnails() {
+            var container = document.getElementById('thumbnails');
+            container.innerHTML = '';
+            images.forEach(function(image) {
+                var img = document.createElement('img');
+                img.src = image.blob;
+                img.alt = image.filename;
+                img.className = 'thumbnail';
+                img.style.width = document.getElementById('slider').value + 'px';
+                img.style.height = document.getElementById('slider').value + 'px';
+                img.onclick = function() { addImageToTable(image.id); };
+                container.appendChild(img);
+            });
+        }
+
+        function addImageToTable(id) {
+            let pair = pairs.find(p => p.back === -1);
+            if (!pair) {
+                pair = { front: id, back: -1 };
+                pairs.push(pair);
+            } else {
+                pair.back = id;
+            }
+            updateTable();
+        }
+
+        function updateTable() {
+            var table = document.getElementById('imageTable');
+            table.innerHTML = '<tr><th>Front</th><th>Back</th><th>Duplicate</th><th>Remove</th></tr>';
+            pairs.forEach(function(pair, index) {
+                var row = table.insertRow();
+                row.insertCell(0).textContent = pair.front !== -1 ? images[pair.front].filename : '';
+                row.insertCell(1).textContent = pair.back !== -1 ? images[pair.back].filename : '';
+                var duplicateCell = row.insertCell(2);
+                var removeCell = row.insertCell(3);
+
+                var duplicateButton = document.createElement('button');
+                duplicateButton.textContent = 'Duplicate';
+                duplicateButton.onclick = function() { duplicatePair(index); };
+                duplicateCell.appendChild(duplicateButton);
+
+                var removeButton = document.createElement('button');
+                removeButton.textContent = 'Remove';
+                removeButton.onclick = function() { removePair(index); };
+                removeCell.appendChild(removeButton);
+            });
+            updateSVGs();
+        }
+
+        function duplicatePair(index) {
+            var newPair = {...pairs[index]};
+            pairs.splice(index, 0, newPair);
+            updateTable();
+        }
+
+        function removePair(index) {
+            pairs.splice(index, 1);
+            updateTable();
+        }
+
+        function updateSVGs() {
+            var pageWidth = parseFloat(document.getElementById('pageWidth').value);
+            var pageHeight = parseFloat(document.getElementById('pageHeight').value);
+            var marginTop = parseFloat(document.getElementById('marginTop').value);
+            var marginRight = parseFloat(document.getElementById('marginRight').value);
+            var marginBottom = parseFloat(document.getElementById('marginBottom').value);
+            var marginLeft = parseFloat(document.getElementById('marginLeft').value);
+            var imageHeight = parseFloat(document.getElementById('imageHeight').value);
+            var imageWidth = parseFloat(document.getElementById('imageWidth').value);
+            var spacing = parseFloat(document.getElementById('spacing').value);
+
+            var svg1 = document.getElementById('svg1');
+            var svg2 = document.getElementById('svg2');
+
+            svg1.setAttribute('width', pageWidth + 'mm');
+            svg1.setAttribute('height', pageHeight + 'mm');
+            svg2.setAttribute('width', pageWidth + 'mm');
+            svg2.setAttribute('height', pageHeight + 'mm');
+
+            svg1.innerHTML = '';
+            svg2.innerHTML = '';
+
+            var currentXLeft = marginLeft;
+            var currentXRight = pageWidth - marginRight - imageWidth;
+            var currentY = marginTop;
+            var rowHeight = 0;
+
+            pairs.forEach(function(pair, index) {
+                if (pair.front !== -1) {
+                    var img1 = createSVGImage(images[pair.front], currentXLeft, currentY, imageWidth, imageHeight);
+                    svg1.appendChild(img1);
+                    currentXLeft += imageWidth + spacing;
+                }
+
+                if (pair.back !== -1) {
+                    var img2 = createSVGImage(images[pair.back], currentXRight, currentY, imageWidth, imageHeight);
+                    svg2.appendChild(img2);
+                    currentXRight -= imageWidth + spacing;
+                }
+
+                rowHeight = Math.max(rowHeight, imageHeight);
+
+                if (currentXLeft + imageWidth + marginRight > pageWidth || currentXRight < marginLeft) {
+                    currentXLeft = marginLeft;
+                    currentXRight = pageWidth - marginRight - imageWidth;
+                    currentY += rowHeight + spacing;
+                    rowHeight = 0;
+                }
+            });
+        }
+
+        function createSVGImage(image, x, y, width, height) {
+            var img = document.createElementNS("http://www.w3.org/2000/svg", "image");
+            img.setAttributeNS(null, 'x', x + 'mm');
+            img.setAttributeNS(null, 'y', y + 'mm');
+            img.setAttributeNS(null, 'width', width + 'mm');
+            img.setAttributeNS(null, 'height', height + 'mm');
+            img.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", image.blob);
+            return img;
+        }
+
+        document.getElementById('downloadFront').addEventListener('click', function() {
+            downloadSVG('svg1', 'front.svg');
+        });
+
+        document.getElementById('downloadBack').addEventListener('click', function() {
+            downloadSVG('svg2', 'back.svg');
+        });
+
+        function downloadSVG(svgId, filename) {
+            var svg = document.getElementById(svgId);
+            var svgData = new XMLSerializer().serializeToString(svg);
+            var svgBlob = new Blob([svgData], {type: "image/svg+xml;charset=utf-8"});
+            var downloadLink = document.createElement("a");
+            downloadLink.href = URL.createObjectURL(svgBlob);
+            downloadLink.download = filename;
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+        }
+    </script>
+</body>
+</html>
